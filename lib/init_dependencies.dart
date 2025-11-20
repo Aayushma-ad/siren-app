@@ -20,32 +20,42 @@ import 'package:siren_app/features/blog/domain/usecases/get_all_blogs.dart';
 import 'package:siren_app/features/blog/domain/usecases/upload_blog.dart';
 import 'package:siren_app/features/blog/presentation/bloc/blog_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 final serviceLocator = GetIt.instance;
 
 Future<void> initDependencies() async {
-  _initAuth();
-  _initBlog();
+  // 1️⃣ Init external services first
   final supabase = await Supabase.initialize(
     url: AppSecrets.supabaseUrl,
     anonKey: AppSecrets.supabaseAnnonKey,
   );
+
   final dir = await getApplicationDocumentsDirectory();
   Hive.init(dir.path);
 
-  serviceLocator.registerLazySingleton(() => supabase.client);
+  // Open Hive box (await, so we get Box, not Future<Box>)
+  final blogsBox = await Hive.openBox('blogs');
 
-  serviceLocator.registerLazySingleton(() => Hive.openBox('blogs'));
+  // 2️⃣ Register low-level dependencies
+  serviceLocator.registerLazySingleton<SupabaseClient>(() => supabase.client);
+
+  // Register the actual Box<dynamic>
+  serviceLocator.registerLazySingleton<Box<dynamic>>(() => blogsBox);
+  // If you have a typed box, do:
+  // serviceLocator.registerLazySingleton<Box<BlogModel>>(() => blogsBox);
 
   serviceLocator.registerFactory(() => InternetConnection());
 
   // core
-  serviceLocator.registerLazySingleton(() => AppUserCubit());
+  serviceLocator.registerLazySingleton<AppUserCubit>(() => AppUserCubit());
 
   serviceLocator.registerFactory<ConnectionChecker>(
     () => ConnectionCheckerImp(serviceLocator()),
   );
+
+  // 3️⃣ Register feature layers
+  _initAuth();
+  _initBlog();
 }
 
 void _initAuth() {
